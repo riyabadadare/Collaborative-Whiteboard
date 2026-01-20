@@ -26,4 +26,5 @@ Senior Project by Riya Badadare
 ## Project Structure
 
 client/ (React frontend)
+
 server/ (Node.js backend)
