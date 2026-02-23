@@ -3,10 +3,17 @@ const express = require("express");
 const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+
 const cors = require("cors");
 const app = express();
-app.use(cors({ origin: "http://localhost:5173" }));
+
+app.use(cors());
 app.use(express.json());
+
+app.use((req, _, next) => {
+  console.log("INCOMING:", req.method, req.url);
+  next();
+});
 
 const userSchema = new mongoose.Schema(
   {
@@ -19,10 +26,35 @@ const userSchema = new mongoose.Schema(
 
 const User = mongoose.model("User", userSchema);
 
+const shapeSchema = new mongoose.Schema(
+  {
+    id: { type: String, required: true }, // for client
+    type: { type: String, required: true, enum: ["rect", "pen"] },
+
+    // used by rect
+    x: { type: Number },
+    y: { type: Number },
+    width: { type: Number },
+    height: { type: Number },
+
+    // used by pen
+    points: { type: [Number] }, // [x1,y1,x2,y2,...]
+    strokeWidth: { type: Number, default: 3 },
+    lineCap: { type: String, default: "round" },
+    lineJoin: { type: String, default: "round" },
+
+    // shared
+    fill: { type: String, default: "#93c5fd" },
+    stroke: { type: String, default: "#1f2937" }
+  },
+  { _id: false } // don’t create Mongo _id for each shape subdoc
+);
+
 const boardSchema = new mongoose.Schema(
   {
     title: { type: String, required: true, trim: true, default: "Untitled board" },
-    owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true }
+    owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    shapes: { type: [shapeSchema], default: [] }
   },
   { timestamps: true }
 );
@@ -170,6 +202,7 @@ app.get("/boards/:id", requireAuth, async (req, res) => {
         createdAt: board.createdAt,
         updatedAt: board.updatedAt
       },
+      shapes: board.shapes || []
     });
   } catch (err) {
     console.error(err);
@@ -204,6 +237,8 @@ async function start() {
   const port = process.env.PORT || 4000;
   app.listen(port, () => console.log(`Server on http://localhost:${port}`));
 }
+
+app.get("/ping", (req, res) => res.send("pong"));
 
 start().catch((err) => {
   console.error("---------- Startup error:", err);

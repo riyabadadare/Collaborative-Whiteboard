@@ -2,27 +2,65 @@ import { getToken } from "./auth";
 
 const API = import.meta.env.VITE_API_BASE_URL;
 
-export async function postJson(path, body) {
+async function authFetch(path, options = {}, requireAuth = true) {
+  const headers = {
+    ...(options.headers || {}),
+  };
+
+  if (requireAuth) {
+    const token = getToken();
+    if (!token) throw new Error("Not authorized");
+    headers.Authorization = `Bearer ${token}`;
+  }
+
   const res = await fetch(`${API}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    ...options,
+    headers,
   });
 
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || "Request failed");
+
+  if (!res.ok) {
+    throw new Error(data.error || "Request failed");
+  }
+
   return data;
 }
 
-export async function getMe() {
-  const token = getToken();
-  if (!token) throw new Error("Not authorized");
+export function postJson(path, body) {
+  return authFetch(
+    path,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    false
+  );
+}
 
-  const res = await fetch(`${API}/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` },
+export function getMe() {
+  return authFetch("/auth/me");
+}
+
+export function getBoard(id) {
+  return authFetch(`/boards/${id}`);
+}
+
+export function getBoards() {
+  return authFetch("/boards");
+}
+
+export function createBoard(title) {
+  return authFetch("/boards", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
   });
+}
 
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || "Not authorized");
-  return data;
+export function deleteBoard(id) {
+  return authFetch(`/boards/${id}`, {
+    method: "DELETE",
+  });
 }
