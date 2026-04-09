@@ -52,7 +52,7 @@ export default function Signup() {
           placeholder="Password (min 8 characters)"
           type="password"
         />
-        <button className="authButton">Sign up</button>
+        <button className="btn btn-primary">Sign up</button>
       </form>
       {err && <div className="authError">{err}</div>}
     </AuthLayout>

@@ -3,6 +3,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { getMe, getBoards, createBoard, deleteBoard } from "../api";
 import { clearToken } from "../auth";
+import "../styles/dashboard.css";
 
 export default function Dashboard() {
   const nav = useNavigate();
@@ -10,6 +11,7 @@ export default function Dashboard() {
   const [boards, setBoards] = React.useState([]);
   const [err, setErr] = React.useState("");
   const [newTitle, setNewTitle] = React.useState("");
+  const [confirmDelete, setConfirmDelete] = React.useState(null);
 
   React.useEffect(() => {
     async function load() {
@@ -58,75 +60,111 @@ export default function Dashboard() {
   }
 
   return (
-    <>
-      <h2>Dashboard</h2>
-      {err && <p style={{ color: "crimson" }}>{err}</p>}
-      {user ? (
-        <>
-          <p>
-            Logged in as <b>{user.fullName}</b> ({user.email})
-          </p>
-          <button onClick={logout}>
-            Log out
-          </button>
+    <div className="dashboardPage">
+      <div className="dashboardShell">
+        {err && <p className="dashboardError">{err}</p>}
 
-          <h3 style={{ marginTop: 20 }}>Create a board</h3>
-          <form onSubmit={onCreateBoard} style={{ display: "flex", gap: 8, maxWidth: 500 }}>
-            <input
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="Board title"
-              style={{ flex: 1, padding: 8 }}
-            />
-            <button type="submit">Create</button>
-          </form>
+        {user ? (
+          <>
+            <div className="dashboardTopbar">
+              <div className="dashboardHeading">
+                <h1 className="dashboardTitle">Dashboard</h1>
+                <p className="dashboardMeta">
+                  {user.fullName} &middot; {user.email}
+                </p>
+              </div>
 
-          <h3 style={{ marginTop: 20 }}>Your boards</h3>
-
-          {boards.length === 0 ? (
-            <p>No boards yet.</p>
-          ) : (
-            <div style={{ display: "grid", gap: 10, maxWidth: 700 }}>
-              {boards.map((b) => (
-                <button
-                  key={b.id}
-                  onClick={() => nav(`/boards/${b.id}`)}
-                  style={{
-                    textAlign: "left",
-                    padding: 12,
-                    borderRadius: 10,
-                    border: "1px solid #ddd",
-                    background: "white",
-                    cursor: "pointer",
-                  }}
-                >
-                  <div style={{ fontWeight: 600 }}>{b.title}</div>
-                  <div style={{ fontSize: 12, opacity: 0.7 }}>
-                    Updated {new Date(b.updatedAt).toLocaleString()}
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDeleteBoard(b.id);
-                    }}
-                    style={{
-                      marginLeft: 10,
-                      background: "none",
-                      border: "none",
-                      color: "red",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Delete
-                  </button>
-                </button>
-              ))}
+              <button className="btn btn-ghost" onClick={logout}>
+                Log out
+              </button>
             </div>
-          )}
-        </>
-      ) : (
-        <p>Loading ...</p>
-      )}
-    </>
+
+            <section className="dashboardSection">
+              <h2 className="dashboardSectionTitle">Create a board</h2>
+
+              <form className="dashboardCreateRow" onSubmit={onCreateBoard}>
+                <input
+                  className="dashboardInput"
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  placeholder="Board title"
+                />
+                <button className="btn btn-primary" type="submit">
+                  Create
+                </button>
+              </form>
+            </section>
+
+            <section className="dashboardSection">
+              <h2 className="dashboardSectionTitle">Your boards</h2>
+
+              {boards.length === 0 ? (
+                <p className="dashboardEmpty">No boards yet. Create one above!</p>
+              ) : (
+                <div className="dashboardBoards">
+                  {boards.map((b) => (
+                    <div
+                      key={b.id}
+                      className="dashboardBoardCard"
+                    >
+                      <div className="dashboardBoardInfo">
+                        <button
+                          className="dashboardBoardTitleBtn"
+                          onClick={() => nav(`/boards/${b.id}`)}
+                        >
+                          {b.title}
+                        </button>
+                        <p className="dashboardBoardMeta">
+                          Updated {new Date(b.updatedAt).toLocaleString()}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="btn btn-danger dashboardDangerBtn"
+                        onClick={() => setConfirmDelete(b)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+            {confirmDelete && (
+              <div className="dashboardModalBackdrop" onClick={() => setConfirmDelete(null)}>
+                <div className="dashboardModal" onClick={(e) => e.stopPropagation()}>
+                  <h3 className="dashboardModalTitle">Delete board?</h3>
+                  <p className="dashboardModalBody">
+                    Are you sure you want to delete{" "}
+                    <span className="dashboardModalBoardName">{confirmDelete.title}</span>?
+                    This cannot be undone.
+                  </p>
+                  <div className="dashboardModalActions">
+                    <button
+                      className="btn btn-ghost"
+                      onClick={() => setConfirmDelete(null)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="btn btn-danger btn-danger-solid"
+                      onClick={() => {
+                        onDeleteBoard(confirmDelete.id);
+                        setConfirmDelete(null);
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="dashboardEmpty">Loading...</p>
+        )}
+      </div>
+    </div>
   );
 }

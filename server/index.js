@@ -29,23 +29,34 @@ const User = mongoose.model("User", userSchema);
 const shapeSchema = new mongoose.Schema(
   {
     id: { type: String, required: true }, // for client
-    type: { type: String, required: true, enum: ["rect", "pen"] },
+    type: { type: String, required: true, enum: ["rect", "circle", "pen", "text"] },
 
-    // used by rect
+    // position (rect / circle / text)
     x: { type: Number },
     y: { type: Number },
+
+    // rect
     width: { type: Number },
     height: { type: Number },
 
-    // used by pen
-    points: { type: [Number] }, // [x1,y1,x2,y2,...]
-    strokeWidth: { type: Number, default: 3 },
-    lineCap: { type: String, default: "round" },
-    lineJoin: { type: String, default: "round" },
+    // circle
+    radius: { type: Number },
+
+    // pen
+    points: { type: [Number] },
+    strokeWidth: { type: Number },
+    lineCap: { type: String },
+    lineJoin: { type: String },
+
+    // text
+    text: { type: String },
+    fontSize: { type: Number },
+    fontFamily: { type: String },
 
     // shared
-    fill: { type: String, default: "#93c5fd" },
-    stroke: { type: String, default: "#1f2937" }
+    fill: { type: String },
+    stroke: { type: String },
+    draggable: { type: Boolean }
   },
   { _id: false } // don’t create Mongo _id for each shape subdoc
 );
@@ -207,6 +218,22 @@ app.get("/boards/:id", requireAuth, async (req, res) => {
   } catch (err) {
     console.error(err);
     return res.status(400).json({ error: "Invalid board id" });
+  }
+});
+
+// Save (replace) all shapes on a board
+app.put("/boards/:id/shapes", requireAuth, async (req, res) => {
+  try {
+    const board = await Board.findOne({ _id: req.params.id, owner: req.user.id });
+    if (!board) return res.status(404).json({ error: "Board not found" });
+
+    board.shapes = req.body.shapes || [];
+    await board.save();
+
+    return res.json({ ok: true, savedAt: board.updatedAt });
+  } catch (err) {
+    console.error(err);
+    return res.status(400).json({ error: "Could not save board" });
   }
 });
 

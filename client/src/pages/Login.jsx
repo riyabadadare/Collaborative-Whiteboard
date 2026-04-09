@@ -46,7 +46,7 @@ export default function Login() {
           placeholder="Password"
           type="password"
         />
-        <button className="authButton">Log in</button>
+        <button className="btn btn-primary">Log in</button>
       </form>
       {err && <div className="authError">{err}</div>}
     </AuthLayout>

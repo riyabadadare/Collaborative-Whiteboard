@@ -64,3 +64,11 @@ export function deleteBoard(id) {
     method: "DELETE",
   });
 }
+
+export function saveBoard(id, shapes) {
+  return authFetch(`/boards/${id}/shapes`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ shapes }),
+  });
+}
