@@ -15,10 +15,10 @@ export default function Signup() {
     e.preventDefault();
     setErr("");
     try {
-      const data = await postJson("/auth/signup", { email, fullName, password });
-      nav("/login"); // TODO: use token and navigate straight to dashboard
-    } catch (e) {
-      setErr(e.message);
+      await postJson("/auth/signup", { email, fullName, password });
+      nav("/login");
+    } catch (err) {
+      setErr(err.message);
     }
   }
 

@@ -14,11 +14,11 @@ export default function Login() {
     e.preventDefault();
     setErr("");
     try {
-      const data = await postJson("/auth/login", { email, password });
-      setToken(data.token);
+      const credentials = await postJson("/auth/login", { email, password });
+      setToken(credentials.token);
       nav("/dashboard");
-    } catch (e) {
-      setErr(e.message);
+    } catch (err) {
+      setErr(err.message);
     }
   }
 

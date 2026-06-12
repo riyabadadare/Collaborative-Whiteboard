@@ -1,8 +1,11 @@
 import React from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Stage, Layer, Rect, Circle, Transformer, Line, Text } from "react-konva";
-import { getBoard, saveBoard } from "../api";
+import { getBoard, saveBoard, saveVersion, restoreVersion } from "../api";
 import ColorPicker from "../components/ColorPicker";
+import PresenceAvatars from "../components/PresenceAvatars";
+import usePresence from "../hooks/usePresence";
+import useShapeSync from "../hooks/useShapeSync";
 import "../styles/board.css";
 
 export default function Board() {
@@ -19,9 +22,30 @@ export default function Board() {
   const [isDrawing, setIsDrawing] = React.useState(false);
   const [editing, setEditing] = React.useState(null);
   const [saveStatus, setSaveStatus] = React.useState(null); // null | "saving" | "saved" | "error"
+  const [versionSaveStatus, setVersionSaveStatus] = React.useState(null); // null | "saving" | "saved" | "error"
+  const [versionModalOpen, setVersionModalOpen] = React.useState(false);
+  const [versionLabel, setVersionLabel] = React.useState("");
+  const [presentMode, setPresentMode] = React.useState(false);
+  const [laserPoints, setLaserPoints] = React.useState([]);
+  const [isLasering, setIsLasering] = React.useState(false);
+  const [showGrid, setShowGrid] = React.useState(false);
+  const [copyIdStatus, setCopyIdStatus] = React.useState(null); // null | "copied"
+  const [versions, setVersions] = React.useState([]);
+  const boardContainerRef = React.useRef(null);
+  const statusTimerRef = React.useRef(null);
+  const syncTimerRef = React.useRef(null);
+  const laserClearRef = React.useRef(null);
+
+  const peers = usePresence(id);
+
+  const { emitShapes, requestShapes, suppressRef, suppress } = useShapeSync(id, shapes, setShapes);
+
+  React.useEffect(() => () => {
+    clearTimeout(statusTimerRef.current);
+    clearTimeout(syncTimerRef.current);
+  }, []);
 
 
-  // Sync fillColor to the selected shape so the picker reflects its current color
   React.useEffect(() => {
     if (!selectedId) return;
     const shape = shapes.find((s) => s.id === selectedId);
@@ -35,42 +59,113 @@ export default function Board() {
 
       if (e.key === "Escape") {
         setSelectedId(null);
+        if (!document.fullscreenElement) setPresentMode(false);
       } else if ((e.key === "Delete") && selectedId) {
         setShapes((prev) => prev.filter((s) => s.id !== selectedId));
         setSelectedId(null);
       }
     }
 
+    function onFullscreenChange() {
+      if (!document.fullscreenElement) setPresentMode(false);
+    }
+
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+    };
   }, [selectedId]);
 
   React.useEffect(() => {
     async function load() {
       try {
-        const data = await getBoard(id);
-        console.log("board data:", data);
-
-        setBoardTitle(data.board.title);
-        setShapes(data.shapes || []);
-        console.log("shapes:", data.shapes);
-
+        const boardRes = await getBoard(id);
+        setBoardTitle(boardRes.board.title);
+        suppress();
+        setShapes(boardRes.shapes || []);
+        setVersions(boardRes.board.versions || []);
+        requestShapes();
       } catch (e) {
         setError(e.message);
       }
     }
     load();
-  }, [id]);
+  }, [id, requestShapes]);
 
-  async function handleSave() {
+  React.useEffect(() => {
+    if (suppressRef.current) {
+      suppressRef.current = false;
+      clearTimeout(syncTimerRef.current);
+      return;
+    }
+    clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = setTimeout(() => emitShapes(shapes), 40);
+  }, [shapes]);
+
+  async function togglePresentMode() {
+    if (!presentMode) {
+      try {
+        const el = boardContainerRef.current;
+        if (el?.requestFullscreen) await el.requestFullscreen();
+        else if (el?.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+        setPresentMode(true);
+      } catch {
+        setPresentMode(true);
+      }
+    } else {
+      if (document.fullscreenElement) {
+        try { await document.exitFullscreen(); } catch { }
+      }
+      setPresentMode(false);
+    }
+  }
+
+  async function save() {
     setSaveStatus("saving");
     try {
       await saveBoard(id, shapes);
       setSaveStatus("saved");
-      setTimeout(() => setSaveStatus(null), 2500);
+      statusTimerRef.current = setTimeout(() => setSaveStatus(null), 2500);
     } catch {
       setSaveStatus("error");
-      setTimeout(() => setSaveStatus(null), 3000);
+      statusTimerRef.current = setTimeout(() => setSaveStatus(null), 3000);
+    }
+  }
+
+  function openVersionModal() {
+    setVersionLabel("");
+    setVersionModalOpen(true);
+  }
+
+  async function saveVer() {
+    const label = versionLabel.trim() || `Version ${new Date().toLocaleString()}`;
+    setVersionModalOpen(false);
+    setVersionSaveStatus("saving");
+    try {
+      await saveVersion(id, shapes, label);
+      setVersionSaveStatus("saved");
+      statusTimerRef.current = setTimeout(() => setVersionSaveStatus(null), 2500);
+    } catch {
+      setVersionSaveStatus("error");
+      statusTimerRef.current = setTimeout(() => setVersionSaveStatus(null), 3000);
+    }
+  }
+
+  async function restoreVer(e) {
+    const versionId = e.target.value;
+    if (!versionId) return;
+
+    try {
+      const snapshot = await restoreVersion(id, versionId);
+
+      suppress();
+      setShapes(snapshot.shapes || []);
+
+      e.target.value = "";
+    } catch (err) {
+      setError(err.message);
     }
   }
 
@@ -267,18 +362,67 @@ export default function Board() {
 
   return (
     <div className="boardPage">
-      <div className="boardContainer">
+      <div
+        className={`boardContainer${presentMode ? " boardContainer--present" : ""}`}
+        ref={boardContainerRef}
+      >
         <div className="boardHeader">
-          <h2 className="boardTitle">
-            {boardTitle || "Board"}
-          </h2>
+          <div className="boardTitleBlock">
+            <h1 className="boardTitle">{boardTitle}</h1>
+          </div>
+
           <div className="boardHeaderActions">
+            <PresenceAvatars peers={peers} />
+
+            <button
+              className={`shareIdBtn${copyIdStatus === "copied" ? " shareIdBtn--copied" : ""}`}
+              title="Copy board ID to share with collaborators"
+              onClick={() => {
+                navigator.clipboard.writeText(id).then(() => {
+                  setCopyIdStatus("copied");
+                  setTimeout(() => setCopyIdStatus(null), 2000);
+                });
+              }}
+            >
+              {copyIdStatus === "copied" ? (
+                <>
+                  Copied!
+                </>
+              ) : (
+                <>
+                  Share Board ID
+                </>
+              )}
+            </button>
+
+            <button
+              className={`saveVersionBtn ${versionSaveStatus === "saving" ? "saveVersionBtn--saving" :
+                versionSaveStatus === "saved" ? "saveVersionBtn--saved" :
+                  versionSaveStatus === "error" ? "saveVersionBtn--error" : ""
+                }`}
+              onClick={openVersionModal}
+              disabled={versionSaveStatus === "saving"}
+            >
+              {versionSaveStatus === "saving" ? "Saving ..." :
+                versionSaveStatus === "saved" ? "Saved" :
+                  versionSaveStatus === "error" ? "Error" :
+                    "Save Version"}
+            </button>
+            <select className="versionSelect" onChange={restoreVer} defaultValue="">
+              <option value="">Restore version...</option>
+              {versions.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
+
             <button
               className={`saveBtn ${saveStatus === "saving" ? "saveBtn--saving" :
-                  saveStatus === "saved" ? "saveBtn--saved" :
-                    saveStatus === "error" ? "saveBtn--error" : ""
+                saveStatus === "saved" ? "saveBtn--saved" :
+                  saveStatus === "error" ? "saveBtn--error" : ""
                 }`}
-              onClick={handleSave}
+              onClick={save}
               disabled={saveStatus === "saving"}
             >
               {saveStatus === "saving" ? "Saving…" :
@@ -286,8 +430,26 @@ export default function Board() {
                   saveStatus === "error" ? "Error" :
                     "Save"}
             </button>
-            <button className="backBtn" onClick={() => nav("/dashboard")}>
-              Back to Dashboard
+
+            <button
+              id="presentModeBtn"
+              className={`presentModeBtn${presentMode ? " presentModeBtn--active" : ""}`}
+              onClick={togglePresentMode}
+              title={presentMode ? "Exit Present Mode (Esc)" : "Present Mode – fullscreen, no distractions"}
+            >
+              {presentMode ? (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                    <path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  Exit
+                </>
+              ) : (
+                <>
+
+                  Present
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -380,6 +542,14 @@ export default function Board() {
           >
             Erase
           </button>
+          <div className="toolDivider" aria-hidden="true" />
+          <button
+            className={`toolBtn toolBtnIcon ${showGrid ? "active" : ""}`}
+            title="Toggle grid overlay"
+            onClick={() => setShowGrid((prev) => !prev)}
+          >
+            Grid
+          </button>
 
           {activeTool !== "erase" && (selectedId || ["pen", "text", "rect", "square", "circle"].includes(activeTool)) && (
             <>
@@ -426,8 +596,16 @@ export default function Board() {
             ref={stageRef}
             width={900}
             height={600}
-            style={{ cursor: activeTool === "erase" ? "crosshair" : ["pen", "text", "rect", "square", "circle"].includes(activeTool) ? "crosshair" : "default" }}
+            style={{ cursor: presentMode ? "crosshair" : activeTool === "erase" ? "crosshair" : ["pen", "text", "rect", "square", "circle"].includes(activeTool) ? "crosshair" : "default" }}
             onMouseDown={(e) => {
+              if (presentMode) {
+                const pos = stageRef.current?.getPointerPosition();
+                if (!pos) return;
+                clearTimeout(laserClearRef.current);
+                setLaserPoints([pos.x, pos.y]);
+                setIsLasering(true);
+                return;
+              }
               if (activeTool === "pen") return startStroke();
               const clickedOnEmpty = e.target === e.target.getStage();
               if (activeTool === "text" && clickedOnEmpty) {
@@ -441,9 +619,20 @@ export default function Board() {
               if (clickedOnEmpty) setSelectedId(null);
             }}
             onMouseMove={() => {
+              if (presentMode && isLasering) {
+                const pos = stageRef.current?.getPointerPosition();
+                if (!pos) return;
+                setLaserPoints((prev) => [...prev, pos.x, pos.y]);
+                return;
+              }
               if (activeTool === "pen") extendStroke();
             }}
             onMouseUp={() => {
+              if (presentMode) {
+                setIsLasering(false);
+                laserClearRef.current = setTimeout(() => setLaserPoints([]), 600);
+                return;
+              }
               if (activeTool === "pen") endStroke();
             }}
             onTouchStart={() => {
@@ -457,6 +646,25 @@ export default function Board() {
             }}
           >
             <Layer>
+              {showGrid && (() => {
+                const STEP = 40;
+                const W = 900;
+                const H = 600;
+                const lines = [];
+                for (let x = STEP; x < W; x += STEP) {
+                  lines.push(
+                    <Line key={`gv-${x}`} points={[x, 0, x, H]}
+                      stroke="rgba(200,200,220,0.25)" strokeWidth={1} listening={false} />
+                  );
+                }
+                for (let y = STEP; y < H; y += STEP) {
+                  lines.push(
+                    <Line key={`gh-${y}`} points={[0, y, W, y]}
+                      stroke="rgba(200,200,220,0.25)" strokeWidth={1} listening={false} />
+                  );
+                }
+                return lines;
+              })()}
               {shapes.map((s) => {
                 if (s.type === "rect") {
                   return (
@@ -647,10 +855,54 @@ export default function Board() {
                   }}
                 />
               )}
+              {presentMode && laserPoints.length >= 4 && (
+                <Line
+                  points={laserPoints}
+                  stroke="#ff3333"
+                  strokeWidth={4}
+                  lineCap="round"
+                  lineJoin="round"
+                  tension={0.4}
+                  listening={false}
+                  opacity={isLasering ? 1 : 0.4}
+                />
+              )}
             </Layer>
           </Stage>
         </div>
+
+        <button className="backBtn" onClick={() => nav("/dashboard")}>
+          Back to Dashboard
+        </button>
       </div>
+
+      {versionModalOpen && (
+        <div className="boardModalBackdrop" onClick={() => setVersionModalOpen(false)}>
+          <div className="boardModal" onClick={(e) => e.stopPropagation()}>
+            <h3 className="boardModalTitle">Save Version</h3>
+            <p className="boardModalBody">Give this snapshot a name (optional)</p>
+            <input
+              className="boardModalInput"
+              value={versionLabel}
+              onChange={(e) => setVersionLabel(e.target.value)}
+              placeholder={`Version ${new Date().toLocaleString()}`}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveVer();
+                if (e.key === "Escape") setVersionModalOpen(false);
+              }}
+            />
+            <div className="boardModalActions">
+              <button className="boardModalCancelBtn" onClick={() => setVersionModalOpen(false)}>
+                Cancel
+              </button>
+              <button className="boardModalSaveBtn" onClick={saveVer}>
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

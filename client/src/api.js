@@ -13,18 +13,18 @@ async function authFetch(path, options = {}, requireAuth = true) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API}${path}`, {
+  const response = await fetch(`${API}${path}`, {
     ...options,
     headers,
   });
 
-  const data = await res.json().catch(() => ({}));
+  const body = await response.json().catch(() => ({}));
 
-  if (!res.ok) {
-    throw new Error(data.error || "Request failed");
+  if (!response.ok) {
+    throw new Error(body.error || "Request failed");
   }
 
-  return data;
+  return body;
 }
 
 export function postJson(path, body) {
@@ -70,5 +70,19 @@ export function saveBoard(id, shapes) {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ shapes }),
+  });
+}
+
+export function saveVersion(boardId, shapes, label) {
+  return authFetch(`/boards/${boardId}/versions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ shapes, label }),
+  });
+}
+
+export function restoreVersion(boardId, versionId) {
+  return authFetch(`/boards/${boardId}/versions/${versionId}/restore`, {
+    method: "POST",
   });
 }

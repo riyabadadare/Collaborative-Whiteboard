@@ -11,6 +11,8 @@ export default function Dashboard() {
   const [boards, setBoards] = React.useState([]);
   const [err, setErr] = React.useState("");
   const [newTitle, setNewTitle] = React.useState("");
+  const [joinId, setJoinId] = React.useState("");
+  const [joinErr, setJoinErr] = React.useState("");
   const [confirmDelete, setConfirmDelete] = React.useState(null);
 
   React.useEffect(() => {
@@ -19,10 +21,10 @@ export default function Dashboard() {
         const me = await getMe();
         setUser(me.user);
 
-        const b = await getBoards();
-        setBoards(b.boards || []);
-      } catch (e) {
-        setErr(e.message);
+        const boardsRes = await getBoards();
+        setBoards(boardsRes.boards || []);
+      } catch (err) {
+        setErr(err.message);
         clearToken();
         nav("/login");
       }
@@ -42,21 +44,32 @@ export default function Dashboard() {
 
     try {
       const title = newTitle.trim() || "Untitled board";
-      const data = await createBoard(title);
-      const id = data.board?.id || data.board?._id || data.id;
+      const created = await createBoard(title);
+      const id = created.board?.id || created.board?._id || created.id;
       nav(`/boards/${id}`);
-    } catch (e2) {
-      setErr(e2.message);
+    } catch (err) {
+      setErr(err.message);
     }
   }
 
   async function onDeleteBoard(id) {
     try {
       await deleteBoard(id);
-      setBoards((prev) => prev.filter((b) => b.id !== id));
-    } catch (e) {
-      setErr(e.message);
+      setBoards((prev) => prev.filter((board) => board.id !== id));
+    } catch (err) {
+      setErr(err.message);
     }
+  }
+
+  function onJoinBoard(e) {
+    e.preventDefault();
+    setJoinErr("");
+    const trimmed = joinId.trim();
+    if (!trimmed) {
+      setJoinErr("Please enter a board ID.");
+      return;
+    }
+    nav(`/boards/${trimmed}`);
   }
 
   return (
@@ -96,36 +109,57 @@ export default function Dashboard() {
             </section>
 
             <section className="dashboardSection">
+              <h2 className="dashboardSectionTitle">Join a board by ID</h2>
+
+              <form className="dashboardCreateRow" onSubmit={onJoinBoard}>
+                <input
+                  className="dashboardInput"
+                  value={joinId}
+                  onChange={(e) => setJoinId(e.target.value)}
+                  placeholder="Paste board ID here"
+                />
+                <button className="btn btn-primary" type="submit">
+                  Join
+                </button>
+              </form>
+              {joinErr && <p className="dashboardJoinErr">{joinErr}</p>}
+            </section>
+
+            <section className="dashboardSection">
               <h2 className="dashboardSectionTitle">Your boards</h2>
 
               {boards.length === 0 ? (
                 <p className="dashboardEmpty">No boards yet. Create one above!</p>
               ) : (
                 <div className="dashboardBoards">
-                  {boards.map((b) => (
+                  {boards.map((board) => (
                     <div
-                      key={b.id}
+                      key={board.id}
                       className="dashboardBoardCard"
                     >
                       <div className="dashboardBoardInfo">
                         <button
                           className="dashboardBoardTitleBtn"
-                          onClick={() => nav(`/boards/${b.id}`)}
+                          onClick={() => nav(`/boards/${board.id}`)}
                         >
-                          {b.title}
+                          {board.title}
                         </button>
+                        <p className="dashboardBoardOwner">
+                          {board.isOwner ? "Owned by you." : `Owned by ${board.owner?.fullName || "Unknown owner"}`}
+                        </p>
                         <p className="dashboardBoardMeta">
-                          Updated {new Date(b.updatedAt).toLocaleString()}
+                          Updated {new Date(board.updatedAt).toLocaleString()}
                         </p>
                       </div>
-
-                      <button
-                        type="button"
-                        className="btn btn-danger dashboardDangerBtn"
-                        onClick={() => setConfirmDelete(b)}
-                      >
-                        Delete
-                      </button>
+                      {board.isOwner && (
+                        <button
+                          type="button"
+                          className="btn btn-danger dashboardDangerBtn"
+                          onClick={() => setConfirmDelete(board)}
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
