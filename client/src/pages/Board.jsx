@@ -116,7 +116,7 @@ export default function Board() {
       }
     } else {
       if (document.fullscreenElement) {
-        try { await document.exitFullscreen(); } catch { }
+        try { await document.exitFullscreen(); } catch { setPresentMode(false); }
       }
       setPresentMode(false);
     }
